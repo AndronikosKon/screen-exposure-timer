@@ -22,7 +22,18 @@
     "idf.port": "/dev/tty.usbmodem113101",
     "files.associations": {
         "*.tcc": "c",
-        "ws2812_led.h": "c"
+        "ws2812_led.h": "c",
+        "complex": "c",
+        "format": "c",
+        "cstdint": "c",
+        "chrono": "c",
+        "random": "c",
+        "limits": "c",
+        "bitset": "c",
+        "algorithm": "c",
+        "task.h": "c",
+        "freertos.h": "c",
+        "rotary_encoder.h": "c"
     },
     "idf.adapterTargetName": "esp32c3",
     "idf.openOcdConfigs": [
