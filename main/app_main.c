@@ -38,6 +38,16 @@
 #include "HD44780.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include <stdint.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/uart.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
+#include "esp32_driver_nextion/nextion.h"
+#include "esp32_driver_nextion/page.h"
+#include "esp32_driver_nextion/component.h"
+
 #define TAG "app"
 
 #define LCD_ADDR 0x27
@@ -48,105 +58,129 @@
 
 #define RELAY_PIN 5
 nvs_handle_t my_nvs_handle;
-rotenc_handle_t *handleref;
-
-enum
-{
-    HOVER_TIME,
-    HOVER_START,
-    EDIT_TIME,
-    COUNTDOWN
-};
+static TaskHandle_t task_handle_user_interface;
 
 int time = 10;
+static void callback_touch_event(nextion_on_touch_event_t event);
+static void process_callback_queue(void *pvParameters);
 
-int mode = HOVER_TIME;
+bool isExposing = false;
 
-void countdownTask(void *param)
+void countdownTask(void *pvParameters)
 {
+    gpio_set_level(RELAY_PIN, 1);
+
     int initialTime = time;
-    int count = 0;
+    nextion_t *nextion_handle = (nextion_t *)pvParameters;
     while (time > 0)
     {
-        if (mode != COUNTDOWN)
+        if (!isExposing)
         {
             gpio_set_level(RELAY_PIN, 0);
             time = initialTime;
+            isExposing = false;
+            int minutes = time / 60;
+            int seconds = time % 60;
+            nextion_component_set_value(nextion_handle, "n0", minutes);
+            nextion_component_set_value(nextion_handle, "n1", seconds);
+            nextion_component_set_text(nextion_handle, "b0", "Start Exposure");
+            nextion_component_set_visibility(nextion_handle, "b1", true);
+            nextion_component_set_visibility(nextion_handle, "b2", true);
+            nextion_component_set_visibility(nextion_handle, "b3", true);
+            nextion_component_set_visibility(nextion_handle, "b4", true);
+            nextion_component_set_visibility(nextion_handle, "b5", true);
+            nextion_component_set_visibility(nextion_handle, "b6", true);
+            nextion_component_set_visibility(nextion_handle, "b7", true);
+            nextion_component_set_visibility(nextion_handle, "b8", true);
+            nextion_component_set_visibility(nextion_handle, "j0", false);
+            nextion_component_set_value(nextion_handle, "j0", 0);
+
             vTaskDelete(NULL);
         }
-        if (count == 9)
-        {
-            count = 0;
-            time--;
-        }
-        else
-        {
-            count++;
-        }
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        time--;
+        nextion_component_set_value(nextion_handle, "j0", ((float)(initialTime - time)) / initialTime * 100);
+        int minutes = time / 60;
+        int seconds = time % 60;
+        nextion_component_set_value(nextion_handle, "n0", minutes);
+        nextion_component_set_value(nextion_handle, "n1", seconds);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     gpio_set_level(RELAY_PIN, 0);
     time = initialTime;
-
-    mode = HOVER_START;
+    isExposing = false;
+    int minutes = time / 60;
+    int seconds = time % 60;
+    nextion_component_set_value(nextion_handle, "n0", minutes);
+    nextion_component_set_value(nextion_handle, "n1", seconds);
+    nextion_component_set_text(nextion_handle, "b0", "Start Exposure");
+    nextion_component_set_visibility(nextion_handle, "b1", true);
+    nextion_component_set_visibility(nextion_handle, "b2", true);
+    nextion_component_set_visibility(nextion_handle, "b3", true);
+    nextion_component_set_visibility(nextion_handle, "b4", true);
+    nextion_component_set_visibility(nextion_handle, "b5", true);
+    nextion_component_set_visibility(nextion_handle, "b6", true);
+    nextion_component_set_visibility(nextion_handle, "b7", true);
+    nextion_component_set_visibility(nextion_handle, "b8", true);
+    nextion_component_set_visibility(nextion_handle, "j0", false);
+    nextion_component_set_value(nextion_handle, "j0", 0);
     play_win(1);
     vTaskDelete(NULL);
 }
 
-static void button_callback(void *arg)
-{
-    ESP_LOGI(TAG, "Button pressed");
-    if (mode == HOVER_START)
-    {
-        mode = COUNTDOWN;
-        ESP_LOGI(TAG, "Mode changed to COUNTDOWN");
-        xTaskCreate(countdownTask, "Countdown Task", 2048, NULL, 5, NULL);
-        gpio_set_level(RELAY_PIN, 1);
-    }
-    else if (mode == EDIT_TIME)
-    {
-        mode = HOVER_TIME;
-        nvs_set_i32(my_nvs_handle, "time", time);
-        ESP_LOGI(TAG, "Mode changed to HOVER_TIME");
-    }
-    else if (mode == HOVER_TIME)
-    {
-        mode = EDIT_TIME;
-        ESP_LOGI(TAG, "Mode changed to EDIT_TIME");
-    }
-    else if (mode == COUNTDOWN)
-    {
-        mode = HOVER_START;
-        ESP_LOGI(TAG, "Mode changed to HOVER_START");
-    }
-}
+// static void button_callback(void *arg)
+// {
+//     ESP_LOGI(TAG, "Button pressed");
+//     if (mode == HOVER_START)
+//     {
+//         mode = COUNTDOWN;
+//         ESP_LOGI(TAG, "Mode changed to COUNTDOWN");
+//         xTaskCreate(countdownTask, "Countdown Task", 2048, NULL, 5, NULL);
+//         gpio_set_level(RELAY_PIN, 1);
+//     }
+//     else if (mode == EDIT_TIME)
+//     {
+//         mode = HOVER_TIME;
+//         nvs_set_i32(my_nvs_handle, "time", time);
+//         ESP_LOGI(TAG, "Mode changed to HOVER_TIME");
+//     }
+//     else if (mode == HOVER_TIME)
+//     {
+//         mode = EDIT_TIME;
+//         ESP_LOGI(TAG, "Mode changed to EDIT_TIME");
+//     }
+//     else if (mode == COUNTDOWN)
+//     {
+//         mode = HOVER_START;
+//         ESP_LOGI(TAG, "Mode changed to HOVER_START");
+//     }
+// }
 
-static void event_callback(rotenc_event_t event)
-{
-    // ESP_LOGI(TAG, "Event: position %d, direction %s", (int)event.position,
-    //          event.direction ? (event.direction == ROTENC_CW ? "CW" : "CCW") : "NOT_SET");
-    if (mode == EDIT_TIME)
-    {
-        if (event.direction == ROTENC_CW)
-        {
-            time += 1;
-        }
-        else
-        {
-            time -= 1;
-        }
-        ESP_LOGI(TAG, "Time: %d", time);
-    }
-    else if (mode == HOVER_TIME)
-    {
-        mode = HOVER_START;
-    }
-    else if (mode == HOVER_START)
-    {
-        mode = HOVER_TIME;
-    }
-    rotenc_reset(handleref);
-}
+// static void event_callback(rotenc_event_t event)
+// {
+//     // ESP_LOGI(TAG, "Event: position %d, direction %s", (int)event.position,
+//     //          event.direction ? (event.direction == ROTENC_CW ? "CW" : "CCW") : "NOT_SET");
+//     if (mode == EDIT_TIME)
+//     {
+//         if (event.direction == ROTENC_CW)
+//         {
+//             time += 1;
+//         }
+//         else
+//         {
+//             time -= 1;
+//         }
+//         ESP_LOGI(TAG, "Time: %d", time);
+//     }
+//     else if (mode == HOVER_TIME)
+//     {
+//         mode = HOVER_START;
+//     }
+//     else if (mode == HOVER_START)
+//     {
+//         mode = HOVER_TIME;
+//     }
+//     rotenc_reset(handleref);
+// }
 
 void app_main()
 {
@@ -161,10 +195,6 @@ void app_main()
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK(err);
-
-    // Open
-    printf("\n");
-    printf("Opening Non-Volatile Storage (NVS) handle... ");
 
     err = nvs_open("storage", NVS_READWRITE, &my_nvs_handle);
     if (err != ESP_OK)
@@ -183,7 +213,8 @@ void app_main()
     case ESP_ERR_NVS_NOT_FOUND:
         ESP_LOGI(TAG, "The value is not initialized yet!\n");
         err = nvs_set_i32(my_nvs_handle, "time", time);
-        if(err != ESP_OK){
+        if (err != ESP_OK)
+        {
             ESP_LOGE(TAG, "Error (%s) writing!\n", esp_err_to_name(err));
         }
         break;
@@ -197,127 +228,146 @@ void app_main()
     gpio_reset_pin(RELAY_PIN);
     gpio_set_direction(RELAY_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(RELAY_PIN, 0);
+    // Initialize UART.
+    nextion_t *nextion_handle = nextion_driver_install(UART_NUM_1,
+                                                       115200,
+                                                       GPIO_NUM_9,
+                                                       GPIO_NUM_10);
 
-    // Initialize the handle instance of the rotary device,
-    // by default it uses 1 mS for the debounce time.
-    rotenc_handle_t handle = {0};
-    handleref = &handle;
-    ESP_ERROR_CHECK(rotenc_init(&handle,
-                                CONFIG_ROT_ENC_CLK_GPIO,
-                                CONFIG_ROT_ENC_DTA_GPIO,
-                                CONFIG_ROT_ENC_DEBOUNCE));
+    // Do basic configuration.
+    nextion_init(nextion_handle);
 
-    ESP_ERROR_CHECK(rotenc_init_button(&handle,
-                                       CONFIG_ROT_ENC_BUTTON_GPIO,
-                                       CONFIG_ROT_ENC_BUTTON_DEBOUNCE,
-                                       button_callback));
+    // Set a callback for touch events.
+    nextion_event_callback_set_on_touch(nextion_handle,
+                                        callback_touch_event);
 
-    ESP_LOGI(TAG, "Report mode by function callback");
-    ESP_ERROR_CHECK(rotenc_set_event_callback(&handle, event_callback));
+    // Go to page with id 0.
+    nextion_page_set(nextion_handle, "0");
+    int minutes = time / 60;
+    int seconds = time % 60;
+    nextion_component_set_value(nextion_handle, "n0", minutes);
+    nextion_component_set_value(nextion_handle, "n1", seconds);
 
+    // Start a task that will handle touch notifications.
+    xTaskCreate(process_callback_queue,
+                "user_interface",
+                2048,
+                (void *)nextion_handle,
+                5,
+                &task_handle_user_interface);
 
+    ESP_LOGI(TAG, "waiting for button to be pressed");
 
-    LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
+    vTaskDelay(portMAX_DELAY);
+}
 
-    LCD_home();
-    LCD_clearScreen();
-    LCD_setCursor(0, 0);
-    char txtBuf[22];
-    uint8_t min = time / 60;
-    uint8_t sec = time % 60;
-    sprintf(txtBuf, "> %d m %d s", min, sec);
-    LCD_writeStr(txtBuf);
+static void callback_touch_event(nextion_on_touch_event_t event)
+{
+    ESP_LOGI(TAG, "page_id: %d, component_id: %d, state: %d",
+             event.page_id, event.component_id, event.state);
 
-    LCD_setCursor(0, 1);
-    LCD_writeStr("Start exposure");
-
-    bool cursorOn = true;
-    int count = 0;
-
-    int prevTime = time;
-    int prevMode = mode;
-    while (1)
+    if (event.page_id == 0 && event.state == NEXTION_TOUCH_RELEASED)
     {
-        if (prevMode != mode)
-        {
-            prevMode = mode;
-            if (mode == COUNTDOWN)
-            {
-                count = 0;
-            }
-        }
+        ESP_LOGI(TAG, "button pressed");
 
-        LCD_home();
+        xTaskNotify(task_handle_user_interface,
+                    event.component_id,
+                    eSetValueWithOverwrite);
+    }
+}
 
-        if (mode == HOVER_TIME)
+[[noreturn]] static void process_callback_queue(void *pvParameters)
+{
+    const uint8_t MAX_TEXT_LENGTH = 50;
+
+    nextion_t *nextion_handle = (nextion_t *)pvParameters;
+    char text_buffer[MAX_TEXT_LENGTH];
+    size_t text_length = MAX_TEXT_LENGTH;
+    int32_t number;
+
+    for (;;)
+    {
+        int button = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        switch (button)
         {
-            LCD_setCursor(0, 0);
-            uint8_t min = time / 60;
-            uint8_t sec = time % 60;
-            sprintf(txtBuf, "> %d m %d s      ", min, sec);
-            LCD_writeStr(txtBuf);
-            LCD_setCursor(0, 1);
-            LCD_writeStr("Start exposure  ");
-        }
-        else if (mode == EDIT_TIME)
-        {
-            LCD_setCursor(2, 0);
-            uint8_t min = time / 60;
-            uint8_t sec = time % 60;
-            sprintf(txtBuf, "%d m %d s", min, sec);
-            LCD_writeStr(txtBuf);
-            LCD_setCursor(0, 1);
-            LCD_writeStr("Start exposure  ");
-        }
-        else if (mode == HOVER_START)
-        {
-            LCD_setCursor(0, 0);
-            uint8_t min = time / 60;
-            uint8_t sec = time % 60;
-            sprintf(txtBuf, "%d m %d s      ", min, sec);
-            LCD_writeStr(txtBuf);
-            LCD_setCursor(0, 1);
-            LCD_writeStr("> Start exposure");
-        }
-        else
-        {
-            LCD_setCursor(0, 0);
-            uint8_t min = time / 60;
-            uint8_t sec = time % 60;
-            sprintf(txtBuf, "%d m %d s", min, sec);
-            LCD_writeStr(txtBuf);
-        }
-        if ((count == 8 || count == 16) && mode == EDIT_TIME)
-        {
-            LCD_setCursor(0, 0);
-            if (cursorOn)
+        case 2:
+            if (isExposing)
             {
-                LCD_writeStr("  ");
+                nextion_component_set_text(nextion_handle, "b0", "Start Exposure");
+                nextion_component_set_visibility(nextion_handle, "b1", true);
+                nextion_component_set_visibility(nextion_handle, "b2", true);
+                nextion_component_set_visibility(nextion_handle, "b3", true);
+                nextion_component_set_visibility(nextion_handle, "b4", true);
+                nextion_component_set_visibility(nextion_handle, "b5", true);
+                nextion_component_set_visibility(nextion_handle, "b6", true);
+                nextion_component_set_visibility(nextion_handle, "b7", true);
+                nextion_component_set_visibility(nextion_handle, "b8", true);
+                nextion_component_set_visibility(nextion_handle, "j0", false);
+                isExposing = !isExposing;
             }
             else
             {
-                LCD_writeStr("> ");
+                nextion_component_set_text(nextion_handle, "b0", "Stop Exposure");
+                nextion_component_set_visibility(nextion_handle, "b1", false);
+                nextion_component_set_visibility(nextion_handle, "b2", false);
+                nextion_component_set_visibility(nextion_handle, "b3", false);
+                nextion_component_set_visibility(nextion_handle, "b4", false);
+                nextion_component_set_visibility(nextion_handle, "b5", false);
+                nextion_component_set_visibility(nextion_handle, "b6", false);
+                nextion_component_set_visibility(nextion_handle, "b7", false);
+                nextion_component_set_visibility(nextion_handle, "b8", false);
+                nextion_component_set_visibility(nextion_handle, "j0", true);
+                isExposing = !isExposing;
+                xTaskCreate(countdownTask, "Countdown Task", 2048, (void *)nextion_handle, 5, NULL);
             }
-            cursorOn = !cursorOn;
+            break;
+        case 4:
+            time += 60;
+            break;
+        case 5:
+            time -= 60;
+            break;
+        case 6:
+            time += 1;
+            break;
+        case 7:
+            time -= 1;
+            break;
+        case 8:
+            time = 300;
+            break;
+        case 9:
+            time = 600;
+            break;
+        case 10:
+            time = 900;
+            break;
+        case 11:
+            time = 1200;
+            break;
+        default:
+            break;
         }
+        ESP_LOGI(TAG, "Time: %d", time);
+        nvs_set_i32(my_nvs_handle, "time", time);
+        int minutes = time / 60;
+        int seconds = time % 60;
+        nextion_component_set_value(nextion_handle, "n0", minutes);
+        nextion_component_set_value(nextion_handle, "n1", seconds);
 
-        if (count == 17)
-        {
-            LCD_setCursor(0, 1);
-            if (mode == COUNTDOWN)
-            {
-                LCD_writeStr("                ");
-            }
-            count = 0;
-        }
+        // Get the text value from a component.
+        nextion_component_get_text(nextion_handle,
+                                   "value_text",
+                                   text_buffer,
+                                   &text_length);
 
-        if (mode == COUNTDOWN)
-        {
-            LCD_setCursor(count, 1);
-            LCD_writeChar('*');
-        }
+        // Get the integer value from a component.
+        nextion_component_get_value(nextion_handle,
+                                    "value_number",
+                                    &number);
 
-        count++;
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        ESP_LOGI(TAG, "text: %s", text_buffer);
+        ESP_LOGI(TAG, "number: %lu", number);
     }
 }

@@ -9,6 +9,8 @@
 #include "esp_log.h"
 #include "driver/rmt_tx.h"
 #include "musical_score_encoder.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #define RMT_BUZZER_RESOLUTION_HZ 1000000 // 1MHz resolution
 #define RMT_BUZZER_GPIO_NUM 6
@@ -78,6 +80,17 @@ void play_win() {
                 .loop_count = score[i].duration_ms * tempo * score[i].freq_hz / 1000,
             };
             ESP_ERROR_CHECK(rmt_transmit(buzzer_chan, score_encoder, &score[i], sizeof(buzzer_musical_score_t), &tx_config));
+        }
+        vTaskDelay(3000 / portTICK_PERIOD_MS);
+        esp_err_t err = rmt_disable(buzzer_chan);
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to disable RMT channel: %s", esp_err_to_name(err));
+        }
+        err = rmt_del_channel(buzzer_chan);
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to delete RMT channel: %s", esp_err_to_name(err));
         }
 }
 

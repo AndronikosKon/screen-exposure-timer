@@ -33,7 +33,10 @@
         "algorithm": "c",
         "task.h": "c",
         "freertos.h": "c",
-        "rotary_encoder.h": "c"
+        "rotary_encoder.h": "c",
+        "nextion.h": "c",
+        "cstdlib": "c",
+        "esp_log.h": "c"
     },
     "idf.adapterTargetName": "esp32c3",
     "idf.openOcdConfigs": [
