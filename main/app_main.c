@@ -61,16 +61,36 @@ nvs_handle_t my_nvs_handle;
 static TaskHandle_t task_handle_user_interface;
 
 int time = 10;
+bool cal = false;
 static void callback_touch_event(nextion_on_touch_event_t event);
 static void process_callback_queue(void *pvParameters);
 
 bool isExposing = false;
+
+void play_sound(void *pvParameters)
+{
+    int option = (int)pvParameters;
+    switch (option)
+    {
+    case 1:
+        play_win(1);
+        break;
+    case 2:
+        play_coin(2);
+        break;
+    default:
+        break;
+    }
+    vTaskDelete(NULL);
+}
 
 void countdownTask(void *pvParameters)
 {
     gpio_set_level(RELAY_PIN, 1);
 
     int initialTime = time;
+    int count = 0;
+    int cal_step = initialTime / 10;
     nextion_t *nextion_handle = (nextion_t *)pvParameters;
     while (time > 0)
     {
@@ -91,12 +111,18 @@ void countdownTask(void *pvParameters)
             nextion_component_set_visibility(nextion_handle, "b5", true);
             nextion_component_set_visibility(nextion_handle, "b6", true);
             nextion_component_set_visibility(nextion_handle, "b7", true);
-            nextion_component_set_visibility(nextion_handle, "b8", true);
+            nextion_component_set_visibility(nextion_handle, "bt0", true);
             nextion_component_set_visibility(nextion_handle, "j0", false);
             nextion_component_set_value(nextion_handle, "j0", 0);
 
             vTaskDelete(NULL);
         }
+
+        if (cal && cal_step > 2 && count % cal_step == 0 && count != 0 && time > 0)
+        {
+            xTaskCreate(play_sound, "Play Sound", 2048, (void *)2, 5, NULL);
+        }
+        count++;
         time--;
         nextion_component_set_value(nextion_handle, "j0", ((float)(initialTime - time)) / initialTime * 100);
         int minutes = time / 60;
@@ -120,67 +146,12 @@ void countdownTask(void *pvParameters)
     nextion_component_set_visibility(nextion_handle, "b5", true);
     nextion_component_set_visibility(nextion_handle, "b6", true);
     nextion_component_set_visibility(nextion_handle, "b7", true);
-    nextion_component_set_visibility(nextion_handle, "b8", true);
+    nextion_component_set_visibility(nextion_handle, "bt0", true);
     nextion_component_set_visibility(nextion_handle, "j0", false);
     nextion_component_set_value(nextion_handle, "j0", 0);
-    play_win(1);
+    xTaskCreate(play_sound, "Play Sound", 2048, (void *)1, 5, NULL);
     vTaskDelete(NULL);
 }
-
-// static void button_callback(void *arg)
-// {
-//     ESP_LOGI(TAG, "Button pressed");
-//     if (mode == HOVER_START)
-//     {
-//         mode = COUNTDOWN;
-//         ESP_LOGI(TAG, "Mode changed to COUNTDOWN");
-//         xTaskCreate(countdownTask, "Countdown Task", 2048, NULL, 5, NULL);
-//         gpio_set_level(RELAY_PIN, 1);
-//     }
-//     else if (mode == EDIT_TIME)
-//     {
-//         mode = HOVER_TIME;
-//         nvs_set_i32(my_nvs_handle, "time", time);
-//         ESP_LOGI(TAG, "Mode changed to HOVER_TIME");
-//     }
-//     else if (mode == HOVER_TIME)
-//     {
-//         mode = EDIT_TIME;
-//         ESP_LOGI(TAG, "Mode changed to EDIT_TIME");
-//     }
-//     else if (mode == COUNTDOWN)
-//     {
-//         mode = HOVER_START;
-//         ESP_LOGI(TAG, "Mode changed to HOVER_START");
-//     }
-// }
-
-// static void event_callback(rotenc_event_t event)
-// {
-//     // ESP_LOGI(TAG, "Event: position %d, direction %s", (int)event.position,
-//     //          event.direction ? (event.direction == ROTENC_CW ? "CW" : "CCW") : "NOT_SET");
-//     if (mode == EDIT_TIME)
-//     {
-//         if (event.direction == ROTENC_CW)
-//         {
-//             time += 1;
-//         }
-//         else
-//         {
-//             time -= 1;
-//         }
-//         ESP_LOGI(TAG, "Time: %d", time);
-//     }
-//     else if (mode == HOVER_TIME)
-//     {
-//         mode = HOVER_START;
-//     }
-//     else if (mode == HOVER_START)
-//     {
-//         mode = HOVER_TIME;
-//     }
-//     rotenc_reset(handleref);
-// }
 
 void app_main()
 {
@@ -281,9 +252,6 @@ static void callback_touch_event(nextion_on_touch_event_t event)
     const uint8_t MAX_TEXT_LENGTH = 50;
 
     nextion_t *nextion_handle = (nextion_t *)pvParameters;
-    char text_buffer[MAX_TEXT_LENGTH];
-    size_t text_length = MAX_TEXT_LENGTH;
-    int32_t number;
 
     for (;;)
     {
@@ -291,7 +259,7 @@ static void callback_touch_event(nextion_on_touch_event_t event)
 
         switch (button)
         {
-        case 2:
+        case 3:
             if (isExposing)
             {
                 nextion_component_set_text(nextion_handle, "b0", "Start Exposure");
@@ -302,7 +270,7 @@ static void callback_touch_event(nextion_on_touch_event_t event)
                 nextion_component_set_visibility(nextion_handle, "b5", true);
                 nextion_component_set_visibility(nextion_handle, "b6", true);
                 nextion_component_set_visibility(nextion_handle, "b7", true);
-                nextion_component_set_visibility(nextion_handle, "b8", true);
+                nextion_component_set_visibility(nextion_handle, "bt0", true);
                 nextion_component_set_visibility(nextion_handle, "j0", false);
                 isExposing = !isExposing;
             }
@@ -316,35 +284,35 @@ static void callback_touch_event(nextion_on_touch_event_t event)
                 nextion_component_set_visibility(nextion_handle, "b5", false);
                 nextion_component_set_visibility(nextion_handle, "b6", false);
                 nextion_component_set_visibility(nextion_handle, "b7", false);
-                nextion_component_set_visibility(nextion_handle, "b8", false);
+                nextion_component_set_visibility(nextion_handle, "bt0", false);
                 nextion_component_set_visibility(nextion_handle, "j0", true);
                 isExposing = !isExposing;
                 xTaskCreate(countdownTask, "Countdown Task", 2048, (void *)nextion_handle, 5, NULL);
             }
             break;
-        case 4:
+        case 5:
             time += 60;
             break;
-        case 5:
+        case 6:
             time -= 60;
             break;
-        case 6:
+        case 7:
             time += 1;
             break;
-        case 7:
+        case 8:
             time -= 1;
             break;
-        case 8:
+        case 9:
             time = 300;
             break;
-        case 9:
+        case 10:
             time = 600;
             break;
-        case 10:
+        case 11:
             time = 900;
             break;
-        case 11:
-            time = 1200;
+        case 1:
+            cal = !cal;
             break;
         default:
             break;
@@ -355,19 +323,5 @@ static void callback_touch_event(nextion_on_touch_event_t event)
         int seconds = time % 60;
         nextion_component_set_value(nextion_handle, "n0", minutes);
         nextion_component_set_value(nextion_handle, "n1", seconds);
-
-        // Get the text value from a component.
-        nextion_component_get_text(nextion_handle,
-                                   "value_text",
-                                   text_buffer,
-                                   &text_length);
-
-        // Get the integer value from a component.
-        nextion_component_get_value(nextion_handle,
-                                    "value_number",
-                                    &number);
-
-        ESP_LOGI(TAG, "text: %s", text_buffer);
-        ESP_LOGI(TAG, "number: %lu", number);
     }
 }

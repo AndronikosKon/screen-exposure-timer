@@ -14,11 +14,11 @@ extern "C"
 #endif
 
     void play_win();
-
-    /**
-     * @brief Type of buzzer musical score
-     */
-    typedef struct
+    void play_coin();
+        /**
+         * @brief Type of buzzer musical score
+         */
+        typedef struct
     {
         uint32_t freq_hz;     /*!< Frequency, in Hz */
         uint32_t duration_ms; /*!< Duration, in ms */

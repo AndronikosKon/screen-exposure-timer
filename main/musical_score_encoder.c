@@ -52,46 +52,99 @@ static const buzzer_musical_score_t score[] = {
     {1760, 6},
 };
 
-void play_win() {
-        ESP_LOGI(TAG, "Create RMT TX channel");
-        rmt_channel_handle_t buzzer_chan = NULL;
-        rmt_tx_channel_config_t tx_chan_config = {
-            .clk_src = RMT_CLK_SRC_DEFAULT, // select source clock
-            .gpio_num = RMT_BUZZER_GPIO_NUM,
-            .mem_block_symbols = 64,
-            .resolution_hz = RMT_BUZZER_RESOLUTION_HZ,
-            .trans_queue_depth = 10, // set the maximum number of transactions that can pend in the background
+static const buzzer_musical_score_t score2[]= {
+    {659, 1},
+    {784, 1},
+    {1319, 1},
+    {1047, 1},
+    {1175, 1},
+    {1568, 1},
+};
+
+void play_win()
+{
+    ESP_LOGI(TAG, "Create RMT TX channel");
+    rmt_channel_handle_t buzzer_chan = NULL;
+    rmt_tx_channel_config_t tx_chan_config = {
+        .clk_src = RMT_CLK_SRC_DEFAULT, // select source clock
+        .gpio_num = RMT_BUZZER_GPIO_NUM,
+        .mem_block_symbols = 64,
+        .resolution_hz = RMT_BUZZER_RESOLUTION_HZ,
+        .trans_queue_depth = 10, // set the maximum number of transactions that can pend in the background
+    };
+    ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_chan_config, &buzzer_chan));
+
+    ESP_LOGI(TAG, "Install musical score encoder");
+    rmt_encoder_handle_t score_encoder = NULL;
+    musical_score_encoder_config_t encoder_config = {
+        .resolution = RMT_BUZZER_RESOLUTION_HZ};
+    ESP_ERROR_CHECK(rmt_new_musical_score_encoder(&encoder_config, &score_encoder));
+
+    ESP_LOGI(TAG, "Enable RMT TX channel");
+    ESP_ERROR_CHECK(rmt_enable(buzzer_chan));
+    ESP_LOGI(TAG, "Playing Win...");
+
+    for (size_t i = 0; i < sizeof(score) / sizeof(score[0]); i++)
+    {
+        rmt_transmit_config_t tx_config = {
+            .loop_count = score[i].duration_ms * tempo * score[i].freq_hz / 1000,
         };
-        ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_chan_config, &buzzer_chan));
+        ESP_ERROR_CHECK(rmt_transmit(buzzer_chan, score_encoder, &score[i], sizeof(buzzer_musical_score_t), &tx_config));
+    }
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
+    esp_err_t err = rmt_disable(buzzer_chan);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to disable RMT channel: %s", esp_err_to_name(err));
+    }
+    err = rmt_del_channel(buzzer_chan);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to delete RMT channel: %s", esp_err_to_name(err));
+    }
+}
 
-        ESP_LOGI(TAG, "Install musical score encoder");
-        rmt_encoder_handle_t score_encoder = NULL;
-        musical_score_encoder_config_t encoder_config = {
-            .resolution = RMT_BUZZER_RESOLUTION_HZ};
-        ESP_ERROR_CHECK(rmt_new_musical_score_encoder(&encoder_config, &score_encoder));
+void play_coin()
+{
+    ESP_LOGI(TAG, "Create RMT TX channel");
+    rmt_channel_handle_t buzzer_chan = NULL;
+    rmt_tx_channel_config_t tx_chan_config = {
+        .clk_src = RMT_CLK_SRC_DEFAULT, // select source clock
+        .gpio_num = RMT_BUZZER_GPIO_NUM,
+        .mem_block_symbols = 64,
+        .resolution_hz = RMT_BUZZER_RESOLUTION_HZ,
+        .trans_queue_depth = 10, // set the maximum number of transactions that can pend in the background
+    };
+    ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_chan_config, &buzzer_chan));
 
-        ESP_LOGI(TAG, "Enable RMT TX channel");
-        ESP_ERROR_CHECK(rmt_enable(buzzer_chan));
-        ESP_LOGI(TAG, "Playing Beethoven's Ode to joy...");
+    ESP_LOGI(TAG, "Install musical score encoder");
+    rmt_encoder_handle_t score_encoder = NULL;
+    musical_score_encoder_config_t encoder_config = {
+        .resolution = RMT_BUZZER_RESOLUTION_HZ};
+    ESP_ERROR_CHECK(rmt_new_musical_score_encoder(&encoder_config, &score_encoder));
 
-        for (size_t i = 0; i < sizeof(score) / sizeof(score[0]); i++)
-        {
-            rmt_transmit_config_t tx_config = {
-                .loop_count = score[i].duration_ms * tempo * score[i].freq_hz / 1000,
-            };
-            ESP_ERROR_CHECK(rmt_transmit(buzzer_chan, score_encoder, &score[i], sizeof(buzzer_musical_score_t), &tx_config));
-        }
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
-        esp_err_t err = rmt_disable(buzzer_chan);
-        if (err != ESP_OK)
-        {
-            ESP_LOGE(TAG, "Failed to disable RMT channel: %s", esp_err_to_name(err));
-        }
-        err = rmt_del_channel(buzzer_chan);
-        if (err != ESP_OK)
-        {
-            ESP_LOGE(TAG, "Failed to delete RMT channel: %s", esp_err_to_name(err));
-        }
+    ESP_LOGI(TAG, "Enable RMT TX channel");
+    ESP_ERROR_CHECK(rmt_enable(buzzer_chan));
+    ESP_LOGI(TAG, "Playing Coin...");
+
+    for (size_t i = 0; i < sizeof(score2) / sizeof(score2[0]); i++)
+    {
+        rmt_transmit_config_t tx_config = {
+            .loop_count = score2[i].duration_ms * tempo * score2[i].freq_hz / 1000,
+        };
+        ESP_ERROR_CHECK(rmt_transmit(buzzer_chan, score_encoder, &score2[i], sizeof(buzzer_musical_score_t), &tx_config));
+    }
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
+    esp_err_t err = rmt_disable(buzzer_chan);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to disable RMT channel: %s", esp_err_to_name(err));
+    }
+    err = rmt_del_channel(buzzer_chan);
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to delete RMT channel: %s", esp_err_to_name(err));
+    }
 }
 
 typedef struct {
